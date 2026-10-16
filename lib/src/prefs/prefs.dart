@@ -63,4 +63,38 @@ class PreferenciasUsuario {
   set serverKey(String serverKey) {
     _prefs.setString('serverKey', serverKey);
   }
+
+  bool get tokenRequired {
+    return _prefs.getBool('tokenRequired') ?? false;
+  }
+
+  set tokenRequired(bool tokenRequired) {
+    _prefs.setBool('tokenRequired', tokenRequired);
+  }
+
+  String get apiToken {
+    return _prefs.getString('apiToken') ?? '';
+  }
+
+  set apiToken(String apiToken) {
+    _prefs.setString('apiToken', apiToken);
+  }
+
+  /// Pausa mínima entre el inicio de dos envíos, en milisegundos.
+  int get sendIntervalMs {
+    return _prefs.getInt('sendIntervalMs') ?? 3000;
+  }
+
+  set sendIntervalMs(int value) {
+    _prefs.setInt('sendIntervalMs', value);
+  }
+
+  /// Máximo de SMS por mes calendario (0 = sin límite).
+  int get monthlyLimit {
+    return _prefs.getInt('monthlyLimit') ?? 2000;
+  }
+
+  set monthlyLimit(int value) {
+    _prefs.setInt('monthlyLimit', value);
+  }
 }

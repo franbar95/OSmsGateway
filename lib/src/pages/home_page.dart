@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:osmsgateway/src/prefs/prefs.dart';
 import 'package:osmsgateway/src/providers/log_provider.dart';
+import 'package:osmsgateway/src/queue/message_store.dart';
+import 'package:osmsgateway/src/queue/sms_queue.dart';
 import 'package:osmsgateway/src/server/server.dart';
+import 'package:osmsgateway/src/sms/native_sms_sender.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity/connectivity.dart';
 
@@ -14,6 +17,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late Server server;
+  final NativeSmsSender _sender = NativeSmsSender();
+  late SmsQueue _queue;
   final String outputTex = '';
   PreferenciasUsuario preferencias = PreferenciasUsuario();
 
@@ -24,7 +29,14 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    server = Server();
+    _queue = SmsQueue(
+        sender: _sender,
+        store: MessageStore.file(
+            () async => '${await _sender.filesDir()}/sms_queue.json'));
+    _applyQueuePrefs();
+    server = Server(queue: _queue);
+    // La cola se recupera y sigue enviando aunque el servidor HTTP esté parado.
+    _queue.start();
     subscription = Connectivity()
         .onConnectivityChanged
         .listen((ConnectivityResult result) async {
@@ -35,10 +47,16 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _applyQueuePrefs() {
+    _queue.sendInterval = Duration(milliseconds: preferencias.sendIntervalMs);
+    _queue.monthlyLimit = preferencias.monthlyLimit;
+  }
+
   @override
   dispose() {
     super.dispose();
     subscription.cancel();
+    _queue.dispose();
   }
 
   @override
@@ -74,10 +92,19 @@ class _HomePageState extends State<HomePage> {
   _iniciar(BuildContext context) async {
     var connectivityResult = await (Connectivity().checkConnectivity());
     if (connectivityResult == ConnectivityResult.wifi) {
+      if (!await _sender.hasPermission() &&
+          !await _sender.requestPermission()) {
+        _log.escribirLog(
+            'Falta el permiso para enviar SMS; el servidor no se inicia');
+        return;
+      }
+      _applyQueuePrefs();
       var args = {
         'serverChain': preferencias.serverChain,
         'serverKey': preferencias.serverKey,
         'timeout': preferencias.timeout,
+        'tokenRequired': preferencias.tokenRequired,
+        'token': preferencias.apiToken,
       };
       await server.iniciar(
           port: preferencias.puerto,

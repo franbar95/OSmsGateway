@@ -27,38 +27,37 @@ abstract class SimpleHttpServer {
     addHanderls();
   }
 
-  void start(
+  /// Abre el puerto y empieza a atender peticiones en segundo plano.
+  /// Completa cuando el puerto ya está abierto. Si no se puede abrir (puerto
+  /// ocupado, certificado inválido...) lanza la excepción al llamador.
+  Future<void> start(
       {InternetAddress? internetAddress,
       int? port,
       required bool secure,
       dynamic args}) async {
-    try {
-      this.port = port ?? this.port;
-      this.internetAddress = internetAddress ?? this.internetAddress;
-      if (secure) {
-        SecurityContext context = SecurityContext();
-        var chain = Platform.script.resolve(args['serverChain']).toFilePath();
-        var key = Platform.script.resolve(args['serverKey']).toFilePath();
-        context.useCertificateChain(chain);
-        context.usePrivateKey(key);
-        httpServer = await HttpServer.bindSecure(
-            this.internetAddress, this.port, context);
-      } else {
-        httpServer = await HttpServer.bind(this.internetAddress, this.port);
-      }
-      print('Server started at port $port');
-      await for (HttpRequest request in httpServer) {
-        try {
-          await _processRequest(request);
+    this.port = port ?? this.port;
+    this.internetAddress = internetAddress ?? this.internetAddress;
+    if (secure) {
+      SecurityContext context = SecurityContext();
+      var chain = Platform.script.resolve(args['serverChain']).toFilePath();
+      var key = Platform.script.resolve(args['serverKey']).toFilePath();
+      context.useCertificateChain(chain);
+      context.usePrivateKey(key);
+      httpServer = await HttpServer.bindSecure(
+          this.internetAddress, this.port, context);
+    } else {
+      httpServer = await HttpServer.bind(this.internetAddress, this.port);
+    }
+    print('Server started at port ${httpServer.port}');
+    httpServer.listen(_handleRequest, onError: (e) => print('error $e'));
+  }
 
-          await request.response.close();
-        } catch (e) {
-          print(e);
-        }
-      }
+  Future<void> _handleRequest(HttpRequest request) async {
+    try {
+      await _processRequest(request);
+      await request.response.close();
     } catch (e) {
-      print('error $e');
-      exit(-1);
+      print(e);
     }
   }
 
@@ -78,6 +77,11 @@ abstract class SimpleHttpServer {
       await execute(type, route, request);
     } catch (e) {
       print('Error calling processResquest $e');
+      try {
+        request.response.statusCode = HttpStatus.internalServerError;
+      } catch (_) {
+        // La respuesta ya había empezado a enviarse.
+      }
     }
   }
 
@@ -104,13 +108,51 @@ abstract class SimpleHttpServer {
     }
   }
 
+  static const List<String> _methods = [GET, POST, PUT, DELETE];
+
+  /// Métodos con un handler registrado para [route].
+  List<String> allowedMethods(String route) =>
+      _methods.where((m) => handlersMap[m]!.containsKey(route)).toList();
+
   Future<void> execute(String type, String route, HttpRequest request) async {
-    if (handlersMap.containsKey(type) &&
-        handlersMap[type]!.containsKey(route)) {
-      await handlersMap[type]![route]!.call(request);
-    } else {
-      await handlersMap['*']!['*']!.call(request);
+    if (type == 'OPTIONS') {
+      await onOptions(request);
+      return;
     }
+    // Se tolera la ruta sin la barra final (/v1/sms equivale a /v1/sms/).
+    final withSlash = route.endsWith('/') ? route : '$route/';
+    for (final candidate in [route, withSlash]) {
+      if (handlersMap.containsKey(type) &&
+          handlersMap[type]!.containsKey(candidate)) {
+        await handlersMap[type]![candidate]!.call(request);
+        return;
+      }
+    }
+    final allowed = allowedMethods(route).isNotEmpty
+        ? allowedMethods(route)
+        : allowedMethods(withSlash);
+    if (allowed.isNotEmpty) {
+      await onMethodNotAllowed(request, allowed);
+    } else {
+      await onNotFound(request);
+    }
+  }
+
+  /// Ruta inexistente. Por defecto usa el handler comodín registrado.
+  Future<void> onNotFound(HttpRequest request) async {
+    await handlersMap['*']!['*']!.call(request);
+  }
+
+  /// La ruta existe pero no para este método.
+  Future<void> onMethodNotAllowed(
+      HttpRequest request, List<String> allowed) async {
+    request.response.statusCode = HttpStatus.methodNotAllowed;
+    request.response.headers.set(HttpHeaders.allowHeader, allowed.join(', '));
+  }
+
+  /// Preflight de CORS.
+  Future<void> onOptions(HttpRequest request) async {
+    request.response.statusCode = HttpStatus.noContent;
   }
 
   Future<String> readFile(String path) async {

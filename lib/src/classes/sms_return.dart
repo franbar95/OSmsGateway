@@ -4,8 +4,8 @@
 
 import 'dart:convert';
 
-import 'package:telephony/telephony.dart';
-
+/// Representación de un SMS leído del teléfono. La lectura (`_readSMS`) está
+/// desactivada, pero se conserva este modelo sin depender de ningún plugin.
 class SmsReturn {
   int? id;
   String? address;
@@ -17,18 +17,18 @@ class SmsReturn {
   String? subject;
   int? subscriptionId;
   int? threadId;
-  SmsReturn(SmsMessage smsMessage) {
-    this.id = smsMessage.id;
-    this.address = smsMessage.address;
-    this.body = smsMessage.body;
-    this.date = smsMessage.date;
-    this.dateSent = smsMessage.dateSent;
-    this.read = smsMessage.read;
-    this.seen = smsMessage.seen;
-    this.subject = smsMessage.subject;
-    this.subscriptionId = smsMessage.subscriptionId;
-    this.threadId = smsMessage.threadId;
-  }
+  SmsReturn({
+    this.id,
+    this.address,
+    this.body,
+    this.date,
+    this.dateSent,
+    this.read,
+    this.seen,
+    this.subject,
+    this.subscriptionId,
+    this.threadId,
+  });
 
   String toRawJson() => json.encode(toJson());
 
