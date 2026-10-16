@@ -6,6 +6,7 @@ import 'package:osmsgateway/src/providers/log_provider.dart';
 import 'package:osmsgateway/src/queue/message_store.dart';
 import 'package:osmsgateway/src/queue/sms_queue.dart';
 import 'package:osmsgateway/src/server/server.dart';
+import 'package:osmsgateway/src/sms/gateway_foreground.dart';
 import 'package:osmsgateway/src/sms/native_sms_sender.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity/connectivity.dart';
@@ -19,6 +20,7 @@ class _HomePageState extends State<HomePage> {
   late Server server;
   final NativeSmsSender _sender = NativeSmsSender();
   late SmsQueue _queue;
+  final GatewayForeground _foreground = NativeGatewayForeground();
   final String outputTex = '';
   PreferenciasUsuario preferencias = PreferenciasUsuario();
 
@@ -98,6 +100,11 @@ class _HomePageState extends State<HomePage> {
             'Falta el permiso para enviar SMS; el servidor no se inicia');
         return;
       }
+      try {
+        await _foreground.ensureNotificationPermission();
+      } catch (e) {
+        _log.escribirLog('No se pudo pedir el permiso de notificaciones: $e');
+      }
       _applyQueuePrefs();
       var args = {
         'serverChain': preferencias.serverChain,
@@ -110,6 +117,15 @@ class _HomePageState extends State<HomePage> {
           port: preferencias.puerto,
           secure: preferencias.secure,
           args: args); //InternetAddress.anyIPv4, preferencias.puerto);
+      if (server.iniciado) {
+        try {
+          await _foreground.start(
+              'Servidor activo en el puerto ${preferencias.puerto}');
+        } catch (e) {
+          _log.escribirLog('No se pudo iniciar el servicio en primer plano: '
+              '$e. El servidor puede detenerse al cerrar la pantalla.');
+        }
+      }
     } else {
       _createDialog(context);
     }
@@ -135,6 +151,11 @@ class _HomePageState extends State<HomePage> {
 
   _parar() async {
     await server.parar();
+    try {
+      await _foreground.stop();
+    } catch (e) {
+      _log.escribirLog('No se pudo detener el servicio en primer plano: $e');
+    }
   }
 
   Widget _creaFloatinActionButton(BuildContext context) {

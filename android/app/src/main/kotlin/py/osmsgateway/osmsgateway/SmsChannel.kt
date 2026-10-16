@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Que Android acepte la solicitud se informa como respuesta del método "send".
  */
 class SmsChannel(
-    private val activity: Activity,
+    private val context: Context,
     messenger: BinaryMessenger
 ) : MethodChannel.MethodCallHandler {
 
@@ -36,6 +36,7 @@ class SmsChannel(
         const val ACTION_SENT = "py.osmsgateway.SMS_SENT"
         const val ACTION_DELIVERED = "py.osmsgateway.SMS_DELIVERED"
         const val REQUEST_SEND_SMS = 4711
+        const val REQUEST_NOTIFICATIONS = 4712
         private const val MAX_AGE_MS = 48L * 60 * 60 * 1000
 
         /**
@@ -62,10 +63,11 @@ class SmsChannel(
     }
 
     private val channel = MethodChannel(messenger, CHANNEL)
-    private val context: Context = activity.applicationContext
+    /** Solo para pedir permisos; el canal sobrevive a la Activity. */
+    private var activity: Activity? = null
     private val progress = HashMap<String, Progress>() // solo hilo principal
     private val requestCodes = AtomicInteger(1)
-    private var pendingPermission: MethodChannel.Result? = null
+    private val pendingPermissions = HashMap<Int, MethodChannel.Result>()
     private var receiverRegistered = false
 
     private val receiver = object : BroadcastReceiver() {
@@ -166,13 +168,41 @@ class SmsChannel(
             context.checkSelfPermission(Manifest.permission.SEND_SMS) ==
             PackageManager.PERMISSION_GRANTED
 
+    fun attachActivity(a: Activity) {
+        activity = a
+    }
+
+    fun detachActivity(a: Activity) {
+        if (activity === a) activity = null
+    }
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
     fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray): Boolean {
-        if (requestCode != REQUEST_SEND_SMS) return false
-        val granted = grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        pendingPermission?.success(granted)
-        pendingPermission = null
+        val pending = pendingPermissions.remove(requestCode) ?: return false
+        pending.success(
+            grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+        )
         return true
+    }
+
+    /** Pide [permission] a través de la Activity visible. */
+    private fun requestRuntimePermission(
+        permission: String, requestCode: Int, result: MethodChannel.Result
+    ) {
+        val a = activity
+        if (a == null) {
+            result.error("NO_ACTIVITY", "La app no está en pantalla para pedir el permiso", null)
+        } else if (pendingPermissions.containsKey(requestCode)) {
+            result.error("BUSY", "Ya hay una solicitud de permiso en curso", null)
+        } else {
+            pendingPermissions[requestCode] = result
+            a.requestPermissions(arrayOf(permission), requestCode)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -202,16 +232,29 @@ class SmsChannel(
             // Carpeta privada de la app (se conserva al reiniciar el teléfono).
             "filesDir" -> result.success(context.filesDir.absolutePath)
             "requestPermission" -> {
-                if (hasSendPermission()) {
-                    result.success(true)
-                } else if (pendingPermission != null) {
-                    result.error("BUSY", "Ya hay una solicitud de permiso en curso", null)
-                } else {
-                    pendingPermission = result
-                    activity.requestPermissions(
-                        arrayOf(Manifest.permission.SEND_SMS), REQUEST_SEND_SMS
-                    )
+                if (hasSendPermission()) result.success(true)
+                else requestRuntimePermission(Manifest.permission.SEND_SMS, REQUEST_SEND_SMS, result)
+            }
+            "hasNotificationPermission" -> result.success(hasNotificationPermission())
+            "requestNotificationPermission" -> {
+                if (hasNotificationPermission()) result.success(true)
+                else requestRuntimePermission(
+                    Manifest.permission.POST_NOTIFICATIONS, REQUEST_NOTIFICATIONS, result
+                )
+            }
+            // Servicio en primer plano: mantiene vivo el proceso (y el motor
+            // Flutter con el servidor y la cola) aunque se cierre la pantalla.
+            "startForeground" -> {
+                try {
+                    GatewayService.start(context, call.argument<String>("text") ?: "")
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error("FOREGROUND_FAILED", e.message ?: e.javaClass.simpleName, null)
                 }
+            }
+            "stopForeground" -> {
+                GatewayService.stop(context)
+                result.success(null)
             }
             "send" -> send(call, result)
             else -> result.notImplemented()

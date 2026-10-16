@@ -1,20 +1,26 @@
 package py.osmsgateway.osmsgateway
 
+import android.content.Context
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
-    private var smsChannel: SmsChannel? = null
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        smsChannel = SmsChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+    // Motor compartido: sobrevive a esta Activity (ver GatewayEngine).
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        GatewayEngine.get(context)
+
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        GatewayEngine.smsChannel?.attachActivity(this)
     }
 
-    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        smsChannel?.dispose()
-        smsChannel = null
-        super.cleanUpFlutterEngine(flutterEngine)
+    override fun onDestroy() {
+        GatewayEngine.smsChannel?.detachActivity(this)
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(
@@ -22,7 +28,7 @@ class MainActivity : FlutterActivity() {
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
-        if (smsChannel?.onRequestPermissionsResult(requestCode, grantResults) != true) {
+        if (GatewayEngine.smsChannel?.onRequestPermissionsResult(requestCode, grantResults) != true) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         }
     }
