@@ -97,4 +97,13 @@ class PreferenciasUsuario {
   set monthlyLimit(int value) {
     _prefs.setInt('monthlyLimit', value);
   }
+
+  /// Mantener la pantalla encendida mientras la app está abierta.
+  bool get keepScreenOn {
+    return _prefs.getBool('keepScreenOn') ?? true;
+  }
+
+  set keepScreenOn(bool value) {
+    _prefs.setBool('keepScreenOn', value);
+  }
 }

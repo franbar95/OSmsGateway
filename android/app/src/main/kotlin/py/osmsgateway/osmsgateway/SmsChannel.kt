@@ -170,6 +170,21 @@ class SmsChannel(
 
     fun attachActivity(a: Activity) {
         activity = a
+        applyKeepScreenOn()
+    }
+
+    /** Mantener la pantalla encendida mientras la app está abierta. */
+    private var keepScreenOn = false
+
+    private fun applyKeepScreenOn() {
+        val a = activity ?: return
+        a.runOnUiThread {
+            if (keepScreenOn) {
+                a.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                a.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 
     fun detachActivity(a: Activity) {
@@ -251,6 +266,13 @@ class SmsChannel(
                 } catch (e: Exception) {
                     result.error("FOREGROUND_FAILED", e.message ?: e.javaClass.simpleName, null)
                 }
+            }
+            // La bandera es de la ventana: se guarda el valor y se reaplica
+            // cada vez que se abre la Activity (el motor sobrevive a ella).
+            "setKeepScreenOn" -> {
+                keepScreenOn = call.argument<Boolean>("enabled") ?: false
+                applyKeepScreenOn()
+                result.success(null)
             }
             "stopForeground" -> {
                 GatewayService.stop(context)

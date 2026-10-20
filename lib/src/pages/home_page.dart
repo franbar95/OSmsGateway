@@ -36,6 +36,10 @@ class _HomePageState extends State<HomePage> {
         store: MessageStore.file(
             () async => '${await _sender.filesDir()}/sms_queue.json'));
     _applyQueuePrefs();
+    _foreground
+        .setKeepScreenOn(preferencias.keepScreenOn)
+        .catchError((Object e) => _log.escribirLog(
+            'No se pudo ajustar la pantalla siempre encendida: $e'));
     server = Server(queue: _queue);
     // La cola se recupera y sigue enviando aunque el servidor HTTP esté parado.
     _queue.start();

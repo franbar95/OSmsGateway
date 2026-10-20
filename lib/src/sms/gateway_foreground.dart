@@ -8,6 +8,9 @@ abstract class GatewayForeground {
 
   Future<void> stop();
 
+  /// Mantiene la pantalla encendida mientras la app está abierta.
+  Future<void> setKeepScreenOn(bool enabled);
+
   /// Pide el permiso de notificaciones (Android 13+). Sin él el servicio
   /// funciona igual, pero la notificación no se muestra en la barra.
   Future<bool> ensureNotificationPermission();
@@ -22,6 +25,10 @@ class NativeGatewayForeground implements GatewayForeground {
 
   @override
   Future<void> stop() => _channel.invokeMethod<void>('stopForeground');
+
+  @override
+  Future<void> setKeepScreenOn(bool enabled) =>
+      _channel.invokeMethod<void>('setKeepScreenOn', {'enabled': enabled});
 
   @override
   Future<bool> ensureNotificationPermission() async {

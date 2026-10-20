@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:osmsgateway/src/server/auth.dart';
+import 'package:osmsgateway/src/sms/gateway_foreground.dart';
 import 'package:osmsgateway/src/prefs/prefs.dart';
 import 'package:osmsgateway/src/utils/utils.dart' as utils;
 import 'package:file_picker/file_picker.dart';
@@ -26,6 +27,7 @@ class _PrefsPageState extends State<PrefsPage> {
   bool _temaOscuro = false;
   bool _isHttps = false;
   bool _tokenRequired = false;
+  bool _keepScreenOn = true;
   @override
   void initState() {
     super.initState();
@@ -34,6 +36,7 @@ class _PrefsPageState extends State<PrefsPage> {
     _isHttps = preferencias.secure;
     _timeout = preferencias.timeout;
     _tokenRequired = preferencias.tokenRequired;
+    _keepScreenOn = preferencias.keepScreenOn;
     _textController = new TextEditingController(text: _port.toString());
     _textControllerTimeout =
         new TextEditingController(text: _timeout.toString());
@@ -240,6 +243,20 @@ class _PrefsPageState extends State<PrefsPage> {
                   ],
                 ),
                 onTap: preferencias.apiToken.isEmpty ? _confirmRegenerate : null,
+              ),
+              Divider(),
+              SwitchListTile(
+                title: Text('Mantener la pantalla encendida'),
+                subtitle: Text('Mientras la app está abierta, para que el '
+                    'teléfono no se suspenda y el servidor siga respondiendo.'),
+                value: _keepScreenOn,
+                onChanged: (value) {
+                  preferencias.keepScreenOn = value;
+                  NativeGatewayForeground().setKeepScreenOn(value);
+                  setState(() {
+                    _keepScreenOn = value;
+                  });
+                },
               ),
               Divider(),
               SwitchListTile(

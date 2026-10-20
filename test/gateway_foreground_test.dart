@@ -58,4 +58,12 @@ void main() {
     expect(calls.map((c) => c.method),
         ['hasNotificationPermission', 'requestNotificationPermission']);
   });
+
+  test('setKeepScreenOn envía el valor a la ventana nativa', () async {
+    await NativeGatewayForeground().setKeepScreenOn(true);
+    await NativeGatewayForeground().setKeepScreenOn(false);
+    expect(calls.map((c) => c.method), ['setKeepScreenOn', 'setKeepScreenOn']);
+    expect(calls[0].arguments, {'enabled': true});
+    expect(calls[1].arguments, {'enabled': false});
+  });
 }
