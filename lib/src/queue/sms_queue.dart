@@ -428,10 +428,14 @@ class SmsQueue {
       }
     }
     final cutoff = now.subtract(retention);
-    saves.add(store.removeWhere((m) =>
-        m.state.isFinal &&
-        m.finishedAt != null &&
-        m.finishedAt!.isBefore(cutoff)));
+    // SENT_BY_MODEM no es final (puede llegar un informe de entrega), pero sin
+    // informe nunca terminaría: se retiene contando desde que salió.
+    saves.add(store.removeWhere((m) {
+      final ref = m.state.isFinal
+          ? m.finishedAt
+          : (m.state == SmsState.sent ? m.sentAt : null);
+      return ref != null && ref.isBefore(cutoff);
+    }));
     await Future.wait(saves);
   }
 

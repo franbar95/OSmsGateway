@@ -489,6 +489,29 @@ void main() {
       expect(q.get(m.id), isNull);
     });
 
+    test('SENT sin informe de entrega también se elimina a los 90 días',
+        () async {
+      final q = makeQueue();
+      final m = await enqueueAndSend(q);
+      await emit(m.id, SmsEventType.sent); // nunca llega el informe de entrega
+      clock.advance(const Duration(days: 89));
+      await q.processOnce();
+      expect(q.get(m.id), isNotNull, reason: 'aún dentro de la retención');
+      clock.advance(const Duration(days: 2));
+      await q.processOnce();
+      expect(q.get(m.id), isNull,
+          reason: 'si no, el archivo de la cola crecería sin límite');
+    });
+
+    test('un mensaje en cola o en curso nunca se elimina por retención',
+        () async {
+      final q = makeQueue()..queuedMaxAge = const Duration(days: 365);
+      final r = await q.enqueue(phone: phone, message: 'pendiente');
+      clock.advance(const Duration(days: 120));
+      await q.processOnce(); // lo envía; sigue ACCEPTED, no final
+      expect(q.get(r.message.id), isNotNull);
+    });
+
     test('el teléfono se enmascara en la salida', () {
       expect(SmsMessage.maskPhone('+595981123456'), '+5959****3456');
     });
